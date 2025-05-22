@@ -1,21 +1,12 @@
-# YewChat 💬
+**Tutorial 10 Pemrograman Lanjut (Advanced Programming) 2024/2025 Genap**
+* Nama    : Muhammad Almerazka Yocendra
+* NPM     : 2306241745
+* Kelas   : Pemrograman Lanjut - A
 
-> Source code for [Let’s Build a Websocket Chat Project With Rust and Yew 0.19 🦀](#)
+## 🍊 Original Code
 
-## Install
+![image](https://github.com/user-attachments/assets/7c5d250d-7fda-4aa2-9d14-4d7ca44b7a36)
 
-1. Install the required toolchain dependencies:
-   ```npm i```
+![image](https://github.com/user-attachments/assets/68185e62-fac4-4d74-a860-73cd472981f2)
 
-2. Follow the YewChat post!
-
-## Branches
-
-This repository is divided to branches that correspond to the blog post sections:
-
-* main - The starter code.
-* routing - The code at the end of the Routing section.
-* components-part1 - The code at the end of the Components-Phase 1 section.
-* websockets - The code at the end of the Hello Websockets! section.
-* components-part2 - The code at the end of the Components-Phase 2 section.
-* websockets-part2 - The code at the end of the WebSockets-Phase 2 section.
+Berdasarkan gambar yang ditampilkan, telah berhasil dilakukan implementasi _webchat_ menggunakan **Yew** _framework_ dengan mengkloning dua repository : **YewChat** dari branch `websockets-part2` dan **SimpleWebsocketServer**. Aplikasi _webchat_ ini memiliki _interface_ yang _user-friendly_ dengan halaman login yang meminta _username_ sebelum memasuki _chat room_, kemudian menampilkan daftar _users_ yang aktif di _sidebar_ kiri dan area _chat_ di sebelah kanan. Setelah menjalankan `npm install` dan `npm start` pada keduanya yaitu **YewChat** dan **SimpleWebSocketServer**, aplikasi dapat berfungsi dengan baik dimana users seperti **"Almer"** dan **"Azka"** dapat saling berinteraksi dalam _real-time_ chat.
