@@ -9,6 +9,7 @@ use crate::{services::websocket::WebsocketService, User};
 pub enum Msg {
     HandleMsg(String),
     SubmitMessage,
+    ToggleDarkMode,
 }
 
 #[derive(Deserialize)]
@@ -45,7 +46,9 @@ pub struct Chat {
     _producer: Box<dyn Bridge<EventBus>>,
     wss: WebsocketService,
     messages: Vec<MessageData>,
+    dark_mode: bool,
 }
+
 impl Component for Chat {
     type Message = Msg;
     type Properties = ();
@@ -78,6 +81,7 @@ impl Component for Chat {
             chat_input: NodeRef::default(),
             wss,
             _producer: EventBus::bridge(ctx.link().callback(Msg::HandleMsg)),
+            dark_mode: false,
         }
     }
 
@@ -93,10 +97,9 @@ impl Component for Chat {
                             .map(|u| UserProfile {
                                 name: u.into(),
                                 avatar: format!(
-                                    "https://avatars.dicebear.com/api/adventurer-neutral/{}.svg",
+                                    "https://robohash.org/{}?set=set4&size=200x200",
                                     u
-                                )
-                                .into(),
+                                ),
                             })
                             .collect();
                         return true;
@@ -115,87 +118,248 @@ impl Component for Chat {
             Msg::SubmitMessage => {
                 let input = self.chat_input.cast::<HtmlInputElement>();
                 if let Some(input) = input {
-                    let message = WebSocketMessage {
-                        message_type: MsgTypes::Message,
-                        data: Some(input.value()),
-                        data_array: None,
-                    };
-                    if let Err(e) = self
-                        .wss
-                        .tx
-                        .clone()
-                        .try_send(serde_json::to_string(&message).unwrap())
-                    {
-                        log::debug!("error sending to channel: {:?}", e);
+                    let message_text = input.value();
+                    if !message_text.trim().is_empty() {
+                        let message = WebSocketMessage {
+                            message_type: MsgTypes::Message,
+                            data: Some(message_text),
+                            data_array: None,
+                        };
+                        if let Err(e) = self
+                            .wss
+                            .tx
+                            .clone()
+                            .try_send(serde_json::to_string(&message).unwrap())
+                        {
+                            log::debug!("error sending to channel: {:?}", e);
+                        }
+                        input.set_value("");
                     }
-                    input.set_value("");
                 };
                 false
+            }
+            Msg::ToggleDarkMode => {
+                self.dark_mode = !self.dark_mode;
+                true
             }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let (user, _) = ctx
+            .link()
+            .context::<User>(Callback::noop())
+            .expect("context to be set");
+        let current_username = user.username.borrow().clone();
+        
         let submit = ctx.link().callback(|_| Msg::SubmitMessage);
+        let toggle_dark_mode = ctx.link().callback(|_| Msg::ToggleDarkMode);
+        
+        let bg_class = if self.dark_mode {
+            "bg-gray-900 text-white"
+        } else {
+            "bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50"
+        };
+        
+        let sidebar_class = if self.dark_mode {
+            "bg-gray-800 border-gray-700"
+        } else {
+            "bg-white border-gray-200 shadow-lg"
+        };
+        
+        let header_class = if self.dark_mode {
+            "bg-gray-800 border-gray-700"
+        } else {
+            "bg-white border-gray-200 shadow-sm"
+        };
 
         html! {
-            <div class="flex w-screen">
-                <div class="flex-none w-56 h-screen bg-gray-100">
-                    <div class="text-xl p-3">{"Users"}</div>
-                    {
-                        self.users.clone().iter().map(|u| {
-                            html!{
-                                <div class="flex m-3 bg-white rounded-lg p-2">
-                                    <div>
-                                        <img class="w-12 h-12 rounded-full" src={u.avatar.clone()} alt="avatar"/>
-                                    </div>
-                                    <div class="flex-grow p-3">
-                                        <div class="flex text-xs justify-between">
-                                            <div>{u.name.clone()}</div>
-                                        </div>
-                                        <div class="text-xs text-gray-400">
-                                            {"Hi there!"}
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        }).collect::<Html>()
-                    }
-                </div>
-                <div class="grow h-screen flex flex-col">
-                    <div class="w-full h-14 border-b-2 border-gray-300"><div class="text-xl p-3">{"💬 Chat!"}</div></div>
-                    <div class="w-full grow overflow-auto border-b-2 border-gray-300">
+            <div class={format!("flex w-screen h-screen {}", bg_class)}>
+                <div class={format!("flex-none w-72 h-screen border-r-2 {}", sidebar_class)}>
+                    <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">{"👥"}</span>
+                            <span class="text-xl font-bold">{"Online Users"}</span>
+                        </div>
+                        <button 
+                            onclick={toggle_dark_mode}
+                            class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            title={if self.dark_mode { "Switch to Light Mode" } else { "Switch to Dark Mode" }}
+                        >
+                            <span class="text-xl">{if self.dark_mode { "🌞" } else { "🌙" }}</span>
+                        </button>
+                    </div>
+                    
+                    <div class="p-2 space-y-2">
                         {
-                            self.messages.iter().map(|m| {
-                                let user = self.users.iter().find(|u| u.name == m.from).unwrap();
+                            self.users.iter().map(|u| {
+                                let is_current_user = u.name == current_username;
+                                let user_bg = if is_current_user {
+                                    if self.dark_mode { 
+                                        "bg-gradient-to-r from-blue-600 to-purple-600 text-white" 
+                                    } else { 
+                                        "bg-gradient-to-r from-blue-500 to-purple-500 text-white" 
+                                    }
+                                } else {
+                                    if self.dark_mode { 
+                                        "bg-gray-700 hover:bg-gray-600" 
+                                    } else { 
+                                        "bg-gray-50 hover:bg-gray-100" 
+                                    }
+                                };
+                                
                                 html!{
-                                    <div class="flex items-end w-3/6 bg-gray-100 m-8 rounded-tl-lg rounded-tr-lg rounded-br-lg ">
-                                        <img class="w-8 h-8 rounded-full m-3" src={user.avatar.clone()} alt="avatar"/>
-                                        <div class="p-3">
-                                            <div class="text-sm">
-                                                {m.from.clone()}
-                                            </div>
-                                            <div class="text-xs text-gray-500">
-                                                if m.message.ends_with(".gif") {
-                                                    <img class="mt-3" src={m.message.clone()}/>
+                                    <div class={format!("flex items-center p-3 rounded-xl transition-all duration-200 {}", user_bg)}>
+                                        <div class="relative">
+                                            <img class="w-12 h-12 rounded-full ring-2 ring-white/30" src={u.avatar.clone()} alt="avatar"/>
+                                            <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                                        </div>
+                                        <div class="ml-3 flex-grow">
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-semibold">{u.name.clone()}</span>
+                                                {if is_current_user {
+                                                    html!{<span class="text-xs bg-white/20 px-2 py-1 rounded-full">{"You"}</span>}
                                                 } else {
-                                                    {m.message.clone()}
-                                                }
+                                                    html!{}
+                                                }}
+                                            </div>
+                                            <div class={format!("text-xs {}", if is_current_user { "text-white/80" } else { "text-gray-500" })}>
+                                                {if is_current_user { "That's you! 🎉" } else { "Active now" }}
                                             </div>
                                         </div>
                                     </div>
                                 }
                             }).collect::<Html>()
                         }
-
                     </div>
-                    <div class="w-full h-14 flex px-3 items-center">
-                        <input ref={self.chat_input.clone()} type="text" placeholder="Message" class="block w-full py-2 pl-4 mx-3 bg-gray-100 rounded-full outline-none focus:text-gray-700" name="message" required=true />
-                        <button onclick={submit} class="p-3 shadow-sm bg-blue-600 w-10 h-10 rounded-full flex justify-center items-center color-white">
-                            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="fill-white">
-                                <path d="M0 0h24v24H0z" fill="none"></path><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-                            </svg>
-                        </button>
+                </div>
+                
+                <div class="grow h-screen flex flex-col">
+                    <div class={format!("w-full h-16 border-b-2 flex items-center justify-between px-6 {}", header_class)}>
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">{"💬"}</span>
+                            <div>
+                                <h1 class="text-xl font-bold">{"WebChat Room"}</h1>
+                                <p class="text-sm text-gray-500">{format!("{} people online", self.users.len())}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                            <span>{"🟢"}</span>
+                            <span>{"Connected"}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="w-full flex-grow overflow-y-auto p-4 space-y-4">
+                        {
+                            self.messages.iter().map(|m| {
+                                let is_own_message = m.from == current_username;
+                                let user = self.users.iter().find(|u| u.name == m.from);
+                                
+                                let container_class = if is_own_message {
+                                    "flex justify-end"
+                                } else {
+                                    "flex justify-start"
+                                };
+                                
+                                let message_class = if is_own_message {
+                                    if self.dark_mode {
+                                        "bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl rounded-br-md p-4 max-w-md shadow-lg"
+                                    } else {
+                                        "bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-2xl rounded-br-md p-4 max-w-md shadow-lg"
+                                    }
+                                } else {
+                                    if self.dark_mode {
+                                        "bg-gray-700 text-white rounded-2xl rounded-bl-md p-4 max-w-md shadow-lg"
+                                    } else {
+                                        "bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-bl-md p-4 max-w-md shadow-lg"
+                                    }
+                                };
+                                
+                                html!{
+                                    <div class={container_class}>
+                                        <div class="flex items-end gap-3 max-w-2xl">
+                                            {if !is_own_message {
+                                                if let Some(user) = user {
+                                                    html!{
+                                                        <img class="w-10 h-10 rounded-full ring-2 ring-white/20 flex-shrink-0" src={user.avatar.clone()} alt="avatar"/>
+                                                    }
+                                                } else {
+                                                    html!{<div class="w-10 h-10 bg-gray-400 rounded-full flex-shrink-0"></div>}
+                                                }
+                                            } else {
+                                                html!{}
+                                            }}
+                                            
+                                            <div class={message_class}>
+                                                {if !is_own_message {
+                                                    html!{
+                                                        <div class="text-sm font-semibold mb-2 opacity-80">
+                                                            {m.from.clone()}
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html!{}
+                                                }}
+                                                
+                                                <div class="text-sm leading-relaxed">
+                                                    {if m.message.ends_with(".gif") || (m.message.starts_with("http") && (m.message.contains(".jpg") || m.message.contains(".png"))) {
+                                                        html!{<img class="mt-2 rounded-lg max-w-xs" src={m.message.clone()} alt="shared image"/>}
+                                                    } else {
+                                                        html!{m.message.clone()}
+                                                    }}
+                                                </div>
+                                            </div>
+                                            
+                                            {if is_own_message {
+                                                html!{
+                                                    <img class="w-10 h-10 rounded-full ring-2 ring-white/20 flex-shrink-0" 
+                                                         src={format!("https://robohash.org/{}?set=set4&size=200x200", current_username)} 
+                                                         alt="your avatar"/>
+                                                }
+                                            } else {
+                                                html!{}
+                                            }}
+                                        </div>
+                                    </div>
+                                }
+                            }).collect::<Html>()
+                        }
+                    </div>
+                    
+                    <div class={format!("w-full p-4 border-t-2 {}", header_class)}>
+                        <div class="flex items-center gap-3">
+                            <input 
+                                ref={self.chat_input.clone()} 
+                                type="text" 
+                                placeholder="💭 Type your message here..." 
+                                class={format!(
+                                    "flex-grow py-3 px-4 rounded-full border-2 outline-none transition-all focus:ring-4 {}",
+                                    if self.dark_mode {
+                                        "bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
+                                    } else {
+                                        "bg-gray-50 border-gray-200 text-gray-800 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
+                                    }
+                                )}
+                                name="message" 
+                                required=true 
+                            />
+                            <button 
+                                onclick={submit} 
+                                class="p-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+                                title="Send message"
+                            >
+                                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="fill-white w-6 h-6">
+                                    <path d="M0 0h24v24H0z" fill="none"></path>
+                                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div class="text-center mt-3">
+                            <p class="text-xs text-gray-500">
+                                {"Press Enter to send"}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
